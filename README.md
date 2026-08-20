@@ -22,3 +22,8 @@ Em `Actions → IA Regression - Claro RJO-AM → Run workflow`, informe primeiro
 - `test-results/`
 
 Se o preflight falhar, envie o Artifact mesmo assim. Ele terá o diagnóstico das tentativas DNS/HTTPS/API sem expor API key ou senha.
+
+
+## v1.4 — requisito para auditoria node por node
+
+O workflow 42 deve salvar execuções de produção. Durante a fase de testes, use `saveDataSuccessExecution=all` e `saveDataErrorExecution=all`. Sem isso, o frontend recebe HTTP 200 normalmente, mas a Public API não possui a execução para recuperar `runData`.

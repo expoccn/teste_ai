@@ -60,7 +60,7 @@ function requestHttps({ url, ip, headers = {}, timeoutMs = 20000 }) {
       servername: parsed.hostname,
       headers: {
         accept: 'application/json,text/html;q=0.9,*/*;q=0.8',
-        'user-agent': 'claro-rjo-am-ai-preflight/1.3',
+        'user-agent': 'claro-rjo-am-ai-preflight/1.4',
         host: parsed.host,
         ...headers,
       },
@@ -112,7 +112,7 @@ function mdStatus(ok) {
 }
 
 const report = {
-  version: '1.3',
+  version: '1.4',
   generated_at: new Date().toISOString(),
   ok: false,
   frontend: {},
@@ -183,6 +183,33 @@ try {
   const n8n = new N8nClient();
   const resolvedWorkflowId = await n8n.resolveWorkflowId();
   report.n8n.workflow_id = resolvedWorkflowId;
+
+  // Verifica se o workflow realmente é auditável. A Public API não consegue
+  // recuperar runData de execuções que o próprio workflow decidiu não salvar.
+  const workflow = await n8n.getWorkflow(resolvedWorkflowId);
+  const settings = workflow?.settings || {};
+  const webhookPaths = Array.isArray(workflow?.nodes)
+    ? workflow.nodes
+        .filter((node) => String(node?.type || '').includes('webhook'))
+        .map((node) => String(node?.parameters?.path || ''))
+        .filter(Boolean)
+    : [];
+  report.n8n.workflow = {
+    id: String(workflow?.id || resolvedWorkflowId),
+    name: String(workflow?.name || ''),
+    active: Boolean(workflow?.active),
+    saveDataSuccessExecution: settings?.saveDataSuccessExecution ?? null,
+    saveDataErrorExecution: settings?.saveDataErrorExecution ?? null,
+    webhook_paths: webhookPaths,
+  };
+
+  if (String(settings?.saveDataSuccessExecution || '') === 'none') {
+    throw new Error('WORKFLOW_EXECUTION_STORAGE_DISABLED: workflow 42 com saveDataSuccessExecution=none. Para auditoria node por node, altere para all e reative/publice o workflow.');
+  }
+  if (!webhookPaths.some((x) => x.includes('claro-rjo-am/ai-chat'))) {
+    throw new Error(`PREFLIGHT_N8N_WRONG_WORKFLOW: N8N_AI_WORKFLOW_ID=${resolvedWorkflowId} não expõe o webhook claro-rjo-am/ai-chat. Caminhos encontrados: ${webhookPaths.join(', ') || '(nenhum)'}.`);
+  }
+
   const executionList = await n8n.listExecutions(1);
   report.n8n.executions_api = {
     ok: Array.isArray(executionList?.data),
@@ -211,6 +238,8 @@ try {
     `- Frontend HTTPS: **${report.frontend?.http?.ok ? 'OK' : 'FALHOU'}** (${frontHttpAttempts} tentativa(s))`,
     `- n8n DNS: **${report.n8n?.dns?.ok ? 'OK' : 'FALHOU'}** (${n8nDnsAttempts} tentativa(s))`,
     `- n8n Public API: **${report.n8n?.api?.ok ? 'OK' : 'FALHOU'}** (${n8nHttpAttempts} tentativa(s))`,
+    `- n8n Workflow: **${report.n8n?.workflow?.name || '-'}** (${report.n8n?.workflow?.active ? 'ativo' : 'inativo'})`,
+    `- Salvamento sucesso/erro: **${report.n8n?.workflow?.saveDataSuccessExecution ?? '-'} / ${report.n8n?.workflow?.saveDataErrorExecution ?? '-'}**`,
     `- n8n Executions API: **${report.n8n?.executions_api?.ok ? 'OK' : 'FALHOU'}**`,
     report.error ? `- Erro: \`${String(report.error).replaceAll('`', "'")}\`` : '',
   ].filter(Boolean);

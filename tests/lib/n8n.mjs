@@ -107,6 +107,29 @@ export class N8nClient {
     throw new Error(`Workflow da IA não encontrado. Configure N8N_AI_WORKFLOW_ID ou ajuste N8N_AI_WORKFLOW_NAME (atual: ${this.workflowName}).`);
   }
 
+
+  async getWorkflow(workflowId = null) {
+    const id = workflowId || await this.resolveWorkflowId();
+    return this.request(`/workflows/${encodeURIComponent(String(id))}`);
+  }
+
+  async assertExecutionPersistenceEnabled() {
+    const workflow = await this.getWorkflow();
+    const settings = workflow?.settings || {};
+    const success = String(settings?.saveDataSuccessExecution || '');
+    const errors = String(settings?.saveDataErrorExecution || '');
+    if (success === 'none') {
+      throw new Error('WORKFLOW_EXECUTION_STORAGE_DISABLED: o workflow 42 está com saveDataSuccessExecution=none. Ative o salvamento de execuções bem-sucedidas (all) para permitir auditoria node por node.');
+    }
+    return {
+      id: String(workflow?.id || this.workflowId || ''),
+      name: String(workflow?.name || ''),
+      active: Boolean(workflow?.active),
+      saveDataSuccessExecution: success || null,
+      saveDataErrorExecution: errors || null,
+    };
+  }
+
   async listExecutions(limit = 30) {
     const workflowId = await this.resolveWorkflowId();
     const qs = new URLSearchParams({ workflowId, limit: String(limit) });
@@ -174,6 +197,6 @@ export class N8nClient {
       }
       await sleep(2000);
     }
-    throw new Error(`Não encontrei execução do workflow 42 para a pergunta "${question}" e sessão "${sessionId}" dentro de ${timeoutMs / 1000}s.`);
+    throw new Error(`Não encontrei execução do workflow 42 para a pergunta "${question}" e sessão "${sessionId}" dentro de ${timeoutMs / 1000}s. Verifique se o workflow ativo salva execuções de produção (saveDataSuccessExecution=all) e se N8N_AI_WORKFLOW_ID aponta para o workflow que atende /claro-rjo-am/ai-chat.`);
   }
 }
