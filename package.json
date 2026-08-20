@@ -1,0 +1,14 @@
+{
+  "name": "claro-rjo-am-ai-regression",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ai": "playwright test tests/ai-regression.spec.mjs",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

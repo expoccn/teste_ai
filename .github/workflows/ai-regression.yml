@@ -1,0 +1,72 @@
+name: IA Regression - Claro RJO-AM
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_group:
+        description: 'Grupo ou ID específico (vazio = todos)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '15 10 * * 1-5'
+
+permissions:
+  contents: read
+
+jobs:
+  ai-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      FRONTEND_TEST_USER: ${{ secrets.FRONTEND_TEST_USER }}
+      FRONTEND_TEST_PASSWORD: ${{ secrets.FRONTEND_TEST_PASSWORD }}
+      N8N_URL: ${{ secrets.N8N_URL }}
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+      N8N_AI_WORKFLOW_ID: ${{ secrets.N8N_AI_WORKFLOW_ID }}
+      N8N_AI_WORKFLOW_NAME: ${{ vars.N8N_AI_WORKFLOW_NAME }}
+      TEST_GROUP: ${{ github.event.inputs.test_group }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run IA regression
+        id: tests
+        continue-on-error: true
+        run: npm run test:ai
+
+      - name: Build semantic summary
+        if: always()
+        run: node scripts/build-summary.mjs
+
+      - name: Publish job summary
+        if: always()
+        run: cat artifacts/AI_REGRESSION_SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claro-rjo-am-ai-regression-${{ github.run_number }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            artifacts/
+            playwright-report/
+            test-results/
+
+      - name: Fail job when semantic tests failed
+        if: always() && steps.tests.outcome == 'failure'
+        run: exit 1

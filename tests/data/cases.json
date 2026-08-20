@@ -1,0 +1,434 @@
+[
+  {
+    "id": "PUE-001",
+    "group": "pue",
+    "period": "30d",
+    "question": "Como está o PUE no período?",
+    "expected": {
+      "intent": "pue",
+      "used_llm": false,
+      "answer_contains": [
+        "PUE"
+      ],
+      "answer_not_contains": [
+        "Período selecionado:"
+      ],
+      "evidence_ids": [
+        "PUE_VALUE"
+      ],
+      "answer_must_not_be_period_only": true,
+      "nodes_must_not_execute": [
+        "Google Gemini Flash Lite"
+      ]
+    }
+  },
+  {
+    "id": "PUE-002",
+    "group": "pue",
+    "period": "30d",
+    "question": "Como está o PUE?",
+    "expected": {
+      "intent": "pue",
+      "used_llm": false,
+      "answer_contains": [
+        "PUE"
+      ],
+      "evidence_ids": [
+        "PUE_VALUE"
+      ]
+    }
+  },
+  {
+    "id": "PUE-003",
+    "group": "pue",
+    "period": "7d",
+    "question": "PUE?",
+    "expected": {
+      "intent": "pue",
+      "used_llm": false,
+      "answer_contains": [
+        "PUE"
+      ]
+    }
+  },
+  {
+    "id": "PUE-004",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Qual foi o PUE em 06/06?",
+    "expected": {
+      "intent": "pue_temporal",
+      "used_llm": false,
+      "temporal_mode": "single_date",
+      "answer_contains": [
+        "06/06/2026",
+        "PUE"
+      ],
+      "nodes_must_execute": [
+        "busca_temporal"
+      ]
+    }
+  },
+  {
+    "id": "PUE-005",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Compare o PUE de 06/06 com 20/06",
+    "expected": {
+      "intent": "pue_temporal",
+      "used_llm": false,
+      "temporal_mode": "compare_dates",
+      "answer_contains": [
+        "06/06/2026",
+        "20/06/2026",
+        "PUE"
+      ]
+    }
+  },
+  {
+    "id": "PUE-006",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Qual foi o maior PUE em junho de 2026?",
+    "expected": {
+      "intent": "pue_temporal",
+      "used_llm": false,
+      "temporal_mode": "date_range",
+      "answer_contains": [
+        "PUE"
+      ]
+    }
+  },
+  {
+    "id": "PUE-007",
+    "group": "governanca",
+    "period": "30d",
+    "question": "Qual foi a média do PUE entre 01/06 e 10/06?",
+    "expected": {
+      "intent": "pue_temporal",
+      "used_llm": false,
+      "temporal_mode": "date_range",
+      "answer_not_contains": [
+        "média calculada"
+      ],
+      "require_limitations": true
+    }
+  },
+  {
+    "id": "PUE-008",
+    "group": "governanca",
+    "period": "30d",
+    "question": "Por que o PUE está alto?",
+    "expected": {
+      "intent": "pue",
+      "used_llm": false,
+      "answer_contains": [
+        "não é possível determinar causa"
+      ],
+      "require_limitations": true
+    }
+  },
+  {
+    "id": "PER-001",
+    "group": "periodo",
+    "period": "30d",
+    "question": "Qual é o período analisado?",
+    "expected": {
+      "intent": "period",
+      "used_llm": false,
+      "answer_contains": [
+        "Período selecionado"
+      ]
+    }
+  },
+  {
+    "id": "PER-002",
+    "group": "periodo",
+    "period": "7d",
+    "question": "De quando são esses dados?",
+    "expected": {
+      "intent": "period",
+      "used_llm": false,
+      "answer_contains": [
+        "Referência"
+      ]
+    }
+  },
+  {
+    "id": "CAG-001",
+    "group": "cag",
+    "period": "30d",
+    "question": "Como está o CAG no período?",
+    "expected": {
+      "intent": "cag",
+      "used_llm": false,
+      "answer_contains": [
+        "CAG"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "CAG-002",
+    "group": "cag",
+    "period": "7d",
+    "question": "Como está o CAG?",
+    "expected": {
+      "intent": "cag",
+      "used_llm": false,
+      "answer_contains": [
+        "CAG"
+      ]
+    }
+  },
+  {
+    "id": "CAG-003",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Como estava o CAG em 06/06?",
+    "expected": {
+      "intent": "cag_temporal",
+      "used_llm": false,
+      "temporal_mode": "single_date",
+      "answer_contains": [
+        "06/06/2026",
+        "CAG"
+      ]
+    }
+  },
+  {
+    "id": "CAG-004",
+    "group": "periodo_explicito",
+    "period": "30d",
+    "question": "Como está o CAG nos últimos 7 dias?",
+    "expected": {
+      "intent": [
+        "cag",
+        "cag_temporal"
+      ],
+      "used_llm": false,
+      "answer_contains": [
+        "CAG"
+      ],
+      "answer_not_contains": [
+        "consulta temporal solicitada foi reconhecida, mas este indicador não possui"
+      ]
+    }
+  },
+  {
+    "id": "UPS-001",
+    "group": "ups",
+    "period": "30d",
+    "question": "Como estão as UPS no período?",
+    "expected": {
+      "intent": "ups",
+      "used_llm": false,
+      "answer_contains": [
+        "UPS"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "UPS-002",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Qual foi a carga da UPS 801 em 06/06?",
+    "expected": {
+      "intent": "ups_temporal",
+      "used_llm": false,
+      "temporal_mode": "single_date",
+      "answer_contains": [
+        "06/06/2026",
+        "UPS"
+      ]
+    }
+  },
+  {
+    "id": "RPP-001",
+    "group": "rpp",
+    "period": "30d",
+    "question": "Como estão os RPP no período?",
+    "expected": {
+      "intent": "rpp",
+      "used_llm": false,
+      "answer_contains": [
+        "RPP"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "GMG-001",
+    "group": "gmg",
+    "period": "30d",
+    "question": "Como estão os GMGs no período?",
+    "expected": {
+      "intent": "gmg",
+      "used_llm": false,
+      "answer_contains": [
+        "GMG"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "GMG-002",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Qual foi a carga do GMG 1 em 06/06?",
+    "expected": {
+      "intent": "gmg_temporal",
+      "used_llm": false,
+      "temporal_mode": "single_date",
+      "answer_contains": [
+        "06/06/2026",
+        "GMG"
+      ]
+    }
+  },
+  {
+    "id": "MNT-001",
+    "group": "manutencao",
+    "period": "30d",
+    "question": "Como está a manutenção no período?",
+    "expected": {
+      "intent": "maintenance",
+      "used_llm": false,
+      "answer_contains": [
+        "Manutenção"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "MNT-002",
+    "group": "manutencao",
+    "period": "30d",
+    "question": "Quais corretivas estão pendentes?",
+    "expected": {
+      "intent": "corrections_pending",
+      "used_llm": false,
+      "answer_contains": [
+        "corretivas",
+        "pendentes"
+      ]
+    }
+  },
+  {
+    "id": "MNT-003",
+    "group": "governanca",
+    "period": "30d",
+    "question": "Quantas corretivas estavam pendentes em 06/06?",
+    "expected": {
+      "intent": "temporal_unsupported",
+      "used_llm": false,
+      "answer_contains": [
+        "manutenção",
+        "ciclo"
+      ],
+      "require_limitations": true
+    }
+  },
+  {
+    "id": "INT-001",
+    "group": "integracoes",
+    "period": "30d",
+    "question": "Quais integrações estão offline?",
+    "expected": {
+      "intent": "integrations",
+      "used_llm": false,
+      "answer_contains": [
+        "integrações",
+        "offline"
+      ],
+      "evidence_ids": [
+        "INTEGRATIONS_OFFLINE"
+      ]
+    }
+  },
+  {
+    "id": "INT-002",
+    "group": "integracoes",
+    "period": "30d",
+    "question": "Como estão as integrações no período?",
+    "expected": {
+      "intent": "integrations",
+      "used_llm": false,
+      "answer_contains": [
+        "integrações"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "PAN-001",
+    "group": "quadros",
+    "period": "30d",
+    "question": "Como estão os quadros no período?",
+    "expected": {
+      "intent": "panels",
+      "used_llm": false,
+      "answer_contains": [
+        "quadros"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "QLT-001",
+    "group": "qualidade",
+    "period": "30d",
+    "question": "Como está a qualidade dos dados no período?",
+    "expected": {
+      "intent": "quality",
+      "used_llm": false,
+      "answer_contains": [
+        "completude"
+      ],
+      "answer_must_not_be_period_only": true
+    }
+  },
+  {
+    "id": "QLT-002",
+    "group": "temporal",
+    "period": "30d",
+    "question": "Como estava a completude em 06/06?",
+    "expected": {
+      "intent": "quality_temporal",
+      "used_llm": false,
+      "temporal_mode": "single_date",
+      "answer_contains": [
+        "06/06/2026"
+      ]
+    }
+  },
+  {
+    "id": "SUM-001",
+    "group": "gemini",
+    "period": "30d",
+    "question": "Faça um resumo executivo da operação",
+    "expected": {
+      "intent": "summary",
+      "used_llm": true,
+      "nodes_must_execute": [
+        "Google Gemini Flash Lite",
+        "valida_redacao_gemini"
+      ]
+    }
+  },
+  {
+    "id": "SUM-002",
+    "group": "gemini",
+    "period": "30d",
+    "question": "Analise a situação atual para a diretoria",
+    "expected": {
+      "intent": "analysis",
+      "used_llm": true,
+      "nodes_must_execute": [
+        "Google Gemini Flash Lite",
+        "valida_redacao_gemini"
+      ]
+    }
+  }
+]
