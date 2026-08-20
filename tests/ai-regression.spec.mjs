@@ -120,7 +120,7 @@ async function sendQuestion(page, question) {
   await expect(textarea).toHaveValue(question);
   await expect(sendButton).toBeEnabled();
 
-  const startedAtMs = Date.now();
+  const startedAfterMs = Date.now();
   const responsePromise = page.waitForResponse(
     (response) => response.url().includes('/ai-chat') && response.request().method() === 'POST',
     { timeout: 130_000 },
@@ -144,7 +144,7 @@ async function sendQuestion(page, question) {
     requestBody = response.request().postData() || null;
   }
 
-  return { response, status, body, requestBody, startedAtMs };
+  return { response, status, body, requestBody, startedAfterMs };
 }
 
 for (const testCase of selected) {
@@ -175,7 +175,7 @@ for (const testCase of selected) {
       await setPeriod(page, testCase.period);
 
       setPhase(record, 'frontend_request');
-      const { status, body, requestBody, startedAtMs } = await sendQuestion(page, testCase.question);
+      const { status, body, requestBody, startedAfterMs } = await sendQuestion(page, testCase.question);
       record.http_status = status;
       record.api_response = body;
       record.frontend_request = requestBody;

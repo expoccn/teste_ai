@@ -1,4 +1,4 @@
-# Claro RJO-AM — Harness E2E / IA v1.1
+# Claro RJO-AM — Harness E2E / IA v1.2
 
 Este repositório executa regressão ponta a ponta da tela **Análises por IA** e correlaciona cada pergunta com a execução real do workflow 42 no n8n.
 
@@ -17,11 +17,11 @@ O teste não considera `Execution successful` como aprovação. Ele verifica:
 11. `intent`, `temporal_query`, `used_llm`, evidências e limitações;
 12. regras semânticas específicas de cada pergunta.
 
-## Correções da v1.1
+## Correções da v1.2
 
 A primeira execução real revelou uma ambiguidade do Playwright: `getByLabel('Senha')` encontrava tanto o campo de senha quanto o botão **Mostrar senha**.
 
-A v1.1 usa seletores ancorados na implementação real do frontend v18:
+A v1.2 usa seletores ancorados na implementação real do frontend v18:
 
 - usuário: `#username`;
 - senha: `#password`;
@@ -68,7 +68,7 @@ O campo `test_group` pode ficar vazio para executar tudo, ou receber um grupo/ID
 - `gemini`
 - `PUE-001`
 
-Para a primeira execução da v1.1, execute somente `PUE-001`.
+Para a primeira execução da v1.2, execute somente `PUE-001`.
 
 ## Como interpretar a falha
 

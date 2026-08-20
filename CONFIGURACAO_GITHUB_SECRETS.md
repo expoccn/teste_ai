@@ -1,4 +1,4 @@
-# Configuração dos Secrets no GitHub — Harness v1.1
+# Configuração dos Secrets no GitHub — Harness v1.2
 
 No repositório `expoccn/teste_ai`:
 
@@ -22,7 +22,7 @@ Não colocar esses valores em `.env`, JSON, README ou workflow YAML commitado.
 
 ## Antes de executar novamente
 
-A execução anterior comprovou que os Secrets chegaram ao runner. Entretanto, se a v1.1 retornar `LOGIN_FAILED`, revise **somente** os Secrets `FRONTEND_TEST_USER` e `FRONTEND_TEST_PASSWORD` no GitHub e confirme que correspondem exatamente ao usuário de teste que acessa o frontend manualmente.
+A execução anterior comprovou que os Secrets chegaram ao runner. Entretanto, se a v1.2 retornar `LOGIN_FAILED`, revise **somente** os Secrets `FRONTEND_TEST_USER` e `FRONTEND_TEST_PASSWORD` no GitHub e confirme que correspondem exatamente ao usuário de teste que acessa o frontend manualmente.
 
 Depois rode apenas:
 
