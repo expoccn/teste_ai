@@ -29,12 +29,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
         run: npm install
@@ -57,7 +57,7 @@ jobs:
 
       - name: Upload full artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: claro-rjo-am-ai-regression-${{ github.run_number }}
           retention-days: 14
@@ -67,6 +67,6 @@ jobs:
             playwright-report/
             test-results/
 
-      - name: Fail job when semantic tests failed
+      - name: Fail job when tests failed
         if: always() && steps.tests.outcome == 'failure'
         run: exit 1
