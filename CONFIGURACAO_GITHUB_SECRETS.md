@@ -1,3 +1,5 @@
+# Configuração GitHub Secrets — Harness v1.5
+
 # Configuração dos Secrets no GitHub — Harness v1.3
 
 No repositório `expoccn/teste_ai`:

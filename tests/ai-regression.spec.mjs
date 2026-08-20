@@ -3,6 +3,7 @@ import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { N8nClient } from './lib/n8n.mjs';
 import { validateSemantic } from './lib/semantic.mjs';
+import { acquireFrontendAccessToken, installAccessTokenInitScript, confirmAccessTokenInstalled } from './lib/frontend-auth.mjs';
 
 const cases = JSON.parse(fs.readFileSync(new URL('./data/cases.json', import.meta.url), 'utf8'));
 const onlyGroup = process.env.TEST_GROUP || '';
@@ -79,49 +80,116 @@ async function attachJson(testInfo, name, value) {
   });
 }
 
-async function login(page) {
-  await navigateWithRetry(page, '/login', 'login');
-  if (!page.url().includes('/login')) return;
+function installBrowserDiagnostics(page, record) {
+  record.browser_diagnostics = {
+    request_failures: [],
+    http_errors: [],
+    page_errors: [],
+    console_errors: [],
+    readiness_attempts: [],
+  };
+  const diag = record.browser_diagnostics;
+  const pushLimited = (list, value, limit = 40) => {
+    if (list.length < limit) list.push(value);
+  };
 
-  // Seletores ancorados nos IDs reais do frontend v18. Evitam a ambiguidade
-  // entre o campo #password e o botão aria-label="Mostrar senha".
-  const username = page.locator('#username');
-  const password = page.locator('#password');
-  const submit = page.locator('form button[type="submit"]');
-
-  await expect(username, 'Campo #username não encontrado na tela de login').toHaveCount(1);
-  await expect(password, 'Campo #password não encontrado na tela de login').toHaveCount(1);
-  await expect(submit, 'Botão submit do formulário de login não encontrado').toHaveCount(1);
-  await expect(username).toBeVisible();
-  await expect(password).toBeVisible();
-  await expect(submit).toBeVisible();
-
-  await username.fill(env('FRONTEND_TEST_USER'));
-  await password.fill(env('FRONTEND_TEST_PASSWORD'));
-
-  await submit.click();
-
-  const loginResult = await Promise.race([
-    page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 45_000 })
-      .then(() => ({ ok: true })),
-    page.getByRole('alert').waitFor({ state: 'visible', timeout: 45_000 })
-      .then(async () => ({ ok: false, message: (await page.getByRole('alert').innerText()).trim() })),
-  ]).catch(() => null);
-
-  if (!loginResult) {
-    throw new Error(`LOGIN_TIMEOUT: o frontend permaneceu em ${page.url()} sem redirecionar nem exibir erro de autenticação.`);
-  }
-  if (!loginResult.ok) {
-    throw new Error(`LOGIN_FAILED: ${loginResult.message || 'o frontend recusou as credenciais de teste.'}`);
-  }
-
-  await expect(page, 'Login concluiu, mas a URL ainda aponta para /login').not.toHaveURL(/\/login\/?(?:\?.*)?$/);
+  page.on('requestfailed', (request) => {
+    pushLimited(diag.request_failures, {
+      method: request.method(),
+      url: request.url(),
+      error: request.failure()?.errorText || 'request failed',
+    });
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      pushLimited(diag.http_errors, {
+        status: response.status(),
+        method: response.request().method(),
+        url: response.url(),
+      });
+    }
+  });
+  page.on('pageerror', (error) => pushLimited(diag.page_errors, String(error?.message || error)));
+  page.on('console', (message) => {
+    if (message.type() === 'error') pushLimited(diag.console_errors, message.text());
+  });
 }
 
-async function openAiPage(page) {
-  await navigateWithRetry(page, '/analises-ia', 'analises-ia');
-  await expect(page.getByRole('heading', { name: 'Análises por IA', exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole('heading', { name: 'Assistente de análise', exact: true })).toBeVisible({ timeout: 60_000 });
+async function waitForAiRuntimeReady(page, record) {
+  const heading = page.getByRole('heading', { name: 'Análises por IA', exact: true });
+  const assistant = page.getByRole('heading', { name: 'Assistente de análise', exact: true });
+  const timeouts = [90_000, 75_000, 60_000];
+
+  for (let attempt = 1; attempt <= timeouts.length; attempt++) {
+    const started = Date.now();
+    try {
+      await heading.waitFor({ state: 'visible', timeout: timeouts[attempt - 1] });
+      await assistant.waitFor({ state: 'visible', timeout: 60_000 });
+      record.browser_diagnostics.readiness_attempts.push({
+        attempt,
+        ok: true,
+        elapsed_ms: Date.now() - started,
+        url: page.url(),
+      });
+      return;
+    } catch (error) {
+      const loginVisible = await page.locator('#username').isVisible().catch(() => false);
+      const checkingVisible = await page.getByText('Verificando acesso...', { exact: true }).isVisible().catch(() => false);
+      const bodyText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+      record.browser_diagnostics.readiness_attempts.push({
+        attempt,
+        ok: false,
+        elapsed_ms: Date.now() - started,
+        url: page.url(),
+        login_visible: loginVisible,
+        checking_access: checkingVisible,
+        body_preview: String(bodyText || '').replace(/\s+/g, ' ').slice(0, 500),
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (loginVisible || /\/login\/?(?:\?.*)?$/.test(new URL(page.url()).pathname)) {
+        throw new Error('AUTH_SESSION_NOT_ACCEPTED: o token obtido pela API não foi aceito pelo frontend e a aplicação retornou para /login.');
+      }
+
+      if (attempt < timeouts.length) {
+        // O frontend publicado atualmente pode estar servindo Vite em modo de desenvolvimento.
+        // Um primeiro carregamento frio pode exigir dezenas/centenas de módulos. Mantemos a
+        // mesma página/contexto e recarregamos para aproveitar o cache já aquecido.
+        await reloadWithRetry(page, `ai-runtime-warmup-${attempt}`);
+      }
+    }
+  }
+
+  const failed = record.browser_diagnostics.request_failures.slice(-8)
+    .map((x) => `${x.method} ${x.url} — ${x.error}`)
+    .join(' | ');
+  throw new Error(`FRONTEND_RUNTIME_NOT_READY: a tela de IA não ficou pronta após aquecimento e recargas. ${failed ? `Últimas requisições com falha: ${failed}` : 'Nenhuma falha HTTP explícita foi capturada.'}`);
+}
+
+async function authenticateFrontend(page, record) {
+  const auth = await acquireFrontendAccessToken();
+  record.auth = {
+    status: auth.status,
+    attempt: auth.attempt,
+    username: auth.user?.username || null,
+    display_name: auth.user?.display_name || null,
+    role: auth.user?.role || null,
+    must_change_password: Boolean(auth.user?.must_change_password),
+  };
+  if (record.auth.must_change_password) {
+    throw new Error('AUTH_TEST_USER_REQUIRES_PASSWORD_CHANGE: o usuário E2E está marcado para troca obrigatória de senha.');
+  }
+  await installAccessTokenInitScript(page, auth.token);
+}
+
+async function openAuthenticatedAiPage(page, record) {
+  await navigateWithRetry(page, '/analises-ia', 'analises-ia-authenticated');
+  await waitForAiRuntimeReady(page, record);
+
+  const tokenInstalled = await confirmAccessTokenInstalled(page);
+  if (!tokenInstalled) {
+    throw new Error('AUTH_TOKEN_NOT_PRESENT: a sessão autenticada não permaneceu no sessionStorage do frontend.');
+  }
 }
 
 async function setPeriod(page, period) {
@@ -139,12 +207,11 @@ async function setPeriod(page, period) {
   ).toBe(period);
 }
 
-async function uniqueAiSession(page, caseId) {
+async function uniqueAiSession(page, caseId, record) {
   const id = `e2e-${Date.now()}-${caseId.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`.slice(0, 96);
   await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [AI_SESSION_KEY, id]);
   await reloadWithRetry(page, 'session-reload');
-
-  await expect(page.getByRole('heading', { name: 'Assistente de análise', exact: true })).toBeVisible({ timeout: 60_000 });
+  await waitForAiRuntimeReady(page, record);
   const textarea = page.getByPlaceholder('Pergunte sobre os dados consolidados...', { exact: true });
   await expect(textarea).toHaveCount(1);
   await expect(textarea).toBeVisible();
@@ -208,14 +275,16 @@ for (const testCase of selected) {
     };
 
     try {
-      setPhase(record, 'login');
-      await login(page);
+      installBrowserDiagnostics(page, record);
+
+      setPhase(record, 'auth_api');
+      await authenticateFrontend(page, record);
 
       setPhase(record, 'open_ai_page');
-      await openAiPage(page);
+      await openAuthenticatedAiPage(page, record);
 
       setPhase(record, 'session');
-      const sessionId = await uniqueAiSession(page, testCase.id);
+      const sessionId = await uniqueAiSession(page, testCase.id, record);
       record.session_id = sessionId;
 
       setPhase(record, 'period');
@@ -281,6 +350,8 @@ for (const testCase of selected) {
         failure_type: record.failure_type,
         page_url: page.url(),
         error: message,
+        auth: record.auth || null,
+        browser_diagnostics: record.browser_diagnostics || null,
         frontend_request: record.frontend_request || null,
         http_status: record.http_status ?? null,
         execution_id: record.execution_id || null,

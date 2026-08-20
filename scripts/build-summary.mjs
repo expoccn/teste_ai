@@ -20,6 +20,7 @@ if (preflight) {
   lines.push(
     `- Preflight infraestrutura: **${preflight.ok ? 'PASS' : 'FAIL'}**`,
     `- Frontend DNS/HTTPS: **${preflight.frontend?.dns?.ok ? 'DNS OK' : 'DNS FAIL'} / ${preflight.frontend?.http?.ok ? 'HTTPS OK' : 'HTTPS FAIL'}**`,
+    `- Runtime frontend: **${preflight.frontend?.runtime_mode || '-'}**`,
     `- n8n DNS/API: **${preflight.n8n?.dns?.ok ? 'DNS OK' : 'DNS FAIL'} / ${preflight.n8n?.api?.ok ? 'API OK' : 'API FAIL'}**`,
   );
   if (preflight.error) lines.push(`- Diagnóstico preflight: **${esc(preflight.error)}**`);

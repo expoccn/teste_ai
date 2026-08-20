@@ -47,7 +47,7 @@ async function resolveHost(hostname, attempts = 6) {
   return { ok: false, ipv4: [], ipv6: [], history };
 }
 
-function requestHttps({ url, ip, headers = {}, timeoutMs = 20000 }) {
+function requestHttps({ url, ip, headers = {}, timeoutMs = 20000, captureText = false }) {
   const parsed = new URL(url);
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -67,13 +67,24 @@ function requestHttps({ url, ip, headers = {}, timeoutMs = 20000 }) {
       timeout: timeoutMs,
     }, (res) => {
       let bytes = 0;
-      res.on('data', (chunk) => { bytes += chunk.length; });
+      const captured = [];
+      let capturedBytes = 0;
+      res.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (captureText && capturedBytes < 20000) {
+          const remaining = 20000 - capturedBytes;
+          const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+          captured.push(slice);
+          capturedBytes += slice.length;
+        }
+      });
       res.on('end', () => resolve({
         ok: true,
         status: Number(res.statusCode || 0),
         elapsed_ms: Date.now() - started,
         bytes,
         remote_ip: res.socket?.remoteAddress || ip || null,
+        ...(captureText ? { text_preview: Buffer.concat(captured).toString('utf8') } : {}),
       }));
     });
     req.on('timeout', () => req.destroy(new Error(`timeout após ${timeoutMs}ms`)));
@@ -82,11 +93,11 @@ function requestHttps({ url, ip, headers = {}, timeoutMs = 20000 }) {
   });
 }
 
-async function checkEndpoint({ name, url, ip, headers = {}, attempts = 5, acceptStatus }) {
+async function checkEndpoint({ name, url, ip, headers = {}, attempts = 5, acceptStatus, captureText = false }) {
   const history = [];
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const result = await requestHttps({ url, ip, headers, timeoutMs: 20000 + (attempt - 1) * 5000 });
+      const result = await requestHttps({ url, ip, headers, timeoutMs: 20000 + (attempt - 1) * 5000, captureText });
       const accepted = acceptStatus(result.status);
       history.push({ attempt, ...result, accepted });
       if (accepted) return { ok: true, name, history, last: history.at(-1) };
@@ -112,7 +123,7 @@ function mdStatus(ok) {
 }
 
 const report = {
-  version: '1.4',
+  version: '1.5',
   generated_at: new Date().toISOString(),
   ok: false,
   frontend: {},
@@ -142,8 +153,18 @@ try {
     url: frontendUrl.toString(),
     ip: frontIp,
     acceptStatus: (status) => status >= 200 && status < 500,
+    captureText: true,
   });
   report.frontend.http = frontHttp;
+  const frontHtml = String(frontHttp?.last?.text_preview || '');
+  const viteDev = /\/@vite\/client|virtual:tanstack-start-dev-client-entry|\/@react-refresh/i.test(frontHtml);
+  report.frontend.runtime_mode = viteDev ? 'vite-dev' : 'bundled-or-unknown';
+  report.frontend.runtime_warning = viteDev
+    ? 'Frontend está servindo runtime Vite de desenvolvimento. O Playwright fará aquecimento/reload porque o primeiro carregamento pode baixar muitos módulos.'
+    : null;
+  // Não persiste HTML no relatório para mantê-lo pequeno.
+  if (report.frontend.http?.last) delete report.frontend.http.last.text_preview;
+  for (const row of report.frontend.http?.history || []) delete row.text_preview;
   if (!frontHttp.ok) throw new Error(`PREFLIGHT_FRONTEND_HTTP_FAILED: ${frontendUrl.origin} não respondeu de forma utilizável após ${frontHttp.history.length} tentativas.`);
 
   console.log(`[preflight] Resolvendo n8n: ${n8nUrl.hostname}`);
@@ -200,8 +221,12 @@ try {
     active: Boolean(workflow?.active),
     saveDataSuccessExecution: settings?.saveDataSuccessExecution ?? null,
     saveDataErrorExecution: settings?.saveDataErrorExecution ?? null,
+    storage_settings_exposed: settings?.saveDataSuccessExecution != null || settings?.saveDataErrorExecution != null,
     webhook_paths: webhookPaths,
   };
+  if (!report.n8n.workflow.storage_settings_exposed) {
+    report.n8n.workflow.storage_warning = 'A Public API desta instância não expôs saveDataSuccessExecution/saveDataErrorExecution; a persistência será comprovada pela recuperação da execução após a pergunta.';
+  }
 
   if (String(settings?.saveDataSuccessExecution || '') === 'none') {
     throw new Error('WORKFLOW_EXECUTION_STORAGE_DISABLED: workflow 42 com saveDataSuccessExecution=none. Para auditoria node por node, altere para all e reative/publice o workflow.');
@@ -236,10 +261,13 @@ try {
     `- Resultado: **${mdStatus(report.ok)}**`,
     `- Frontend DNS: **${report.frontend?.dns?.ok ? 'OK' : 'FALHOU'}** (${frontDnsAttempts} tentativa(s))`,
     `- Frontend HTTPS: **${report.frontend?.http?.ok ? 'OK' : 'FALHOU'}** (${frontHttpAttempts} tentativa(s))`,
+    `- Runtime frontend: **${report.frontend?.runtime_mode || '-'}**`,
+    report.frontend?.runtime_warning ? `- Aviso runtime: ${report.frontend.runtime_warning}` : '',
     `- n8n DNS: **${report.n8n?.dns?.ok ? 'OK' : 'FALHOU'}** (${n8nDnsAttempts} tentativa(s))`,
     `- n8n Public API: **${report.n8n?.api?.ok ? 'OK' : 'FALHOU'}** (${n8nHttpAttempts} tentativa(s))`,
     `- n8n Workflow: **${report.n8n?.workflow?.name || '-'}** (${report.n8n?.workflow?.active ? 'ativo' : 'inativo'})`,
-    `- Salvamento sucesso/erro: **${report.n8n?.workflow?.saveDataSuccessExecution ?? '-'} / ${report.n8n?.workflow?.saveDataErrorExecution ?? '-'}**`,
+    `- Salvamento sucesso/erro: **${report.n8n?.workflow?.saveDataSuccessExecution ?? 'não exposto'} / ${report.n8n?.workflow?.saveDataErrorExecution ?? 'não exposto'}**`,
+    report.n8n?.workflow?.storage_warning ? `- Aviso auditoria: ${report.n8n.workflow.storage_warning}` : '',
     `- n8n Executions API: **${report.n8n?.executions_api?.ok ? 'OK' : 'FALHOU'}**`,
     report.error ? `- Erro: \`${String(report.error).replaceAll('`', "'")}\`` : '',
   ].filter(Boolean);

@@ -17,8 +17,8 @@ const hostRules = browserHostResolverRules();
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 300_000,
-  expect: { timeout: 25_000 },
+  timeout: 720_000,
+  expect: { timeout: 60_000 },
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -34,8 +34,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
-    actionTimeout: 30_000,
-    navigationTimeout: 75_000,
+    actionTimeout: 60_000,
+    navigationTimeout: 90_000,
     launchOptions: {
       args: hostRules.length ? [`--host-resolver-rules=${hostRules.join(',')}`] : [],
     },
