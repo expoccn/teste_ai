@@ -1,3 +1,5 @@
+import https from 'node:https';
+
 const normalizeBase = (value) => String(value || '').replace(/\/+$/, '');
 
 function requiredEnv(name) {
@@ -6,30 +8,81 @@ function requiredEnv(name) {
   return value;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableNetworkError(error) {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '');
+  return ['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE'].includes(code)
+    || /timeout|socket hang up|network/i.test(message);
+}
+
 export class N8nClient {
   constructor() {
     this.baseUrl = normalizeBase(requiredEnv('N8N_URL'));
     this.apiKey = requiredEnv('N8N_API_KEY');
     this.workflowId = process.env.N8N_AI_WORKFLOW_ID || '';
     this.workflowName = process.env.N8N_AI_WORKFLOW_NAME || '42 CLARO RJO-AM - IA Chat';
+    this.resolvedIp = process.env.N8N_RESOLVED_IP || '';
+    this.parsedBase = new URL(this.baseUrl);
+  }
+
+  async requestOnce(path, options = {}) {
+    if (options.method && options.method !== 'GET') throw new Error('N8nClient de auditoria é somente leitura (GET).');
+    const target = new URL(`/api/v1${path}`, `${this.baseUrl}/`);
+    const hostname = this.resolvedIp || target.hostname;
+
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        protocol: target.protocol,
+        hostname,
+        port: target.port || 443,
+        path: `${target.pathname}${target.search}`,
+        method: 'GET',
+        servername: target.hostname,
+        timeout: 25_000,
+        headers: {
+          accept: 'application/json',
+          'X-N8N-API-KEY': this.apiKey,
+          host: target.host,
+          ...(options.headers || {}),
+        },
+      }, (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let body = null;
+          try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+          const status = Number(response.statusCode || 0);
+          if (status < 200 || status >= 300) {
+            reject(new Error(`n8n API ${status} ${path}: ${typeof body === 'string' ? body.slice(0, 500) : JSON.stringify(body)}`));
+            return;
+          }
+          resolve(body);
+        });
+      });
+      req.on('timeout', () => req.destroy(Object.assign(new Error('n8n API timeout após 25s'), { code: 'ETIMEDOUT' })));
+      req.on('error', reject);
+      req.end();
+    });
   }
 
   async request(path, options = {}) {
-    const response = await fetch(`${this.baseUrl}/api/v1${path}`, {
-      ...options,
-      headers: {
-        accept: 'application/json',
-        'X-N8N-API-KEY': this.apiKey,
-        ...(options.headers || {}),
-      },
-    });
-    const text = await response.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-    if (!response.ok) {
-      throw new Error(`n8n API ${response.status} ${path}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        return await this.requestOnce(path, options);
+      } catch (error) {
+        lastError = error;
+        // HTTP 4xx/5xx vêm sem code de rede; não repetimos autenticação inválida.
+        if (!isRetryableNetworkError(error)) throw error;
+        if (attempt < 5) await sleep(Math.min(1500 * attempt, 6000));
+      }
     }
-    return body;
+    throw lastError || new Error(`Falha desconhecida ao consultar n8n ${path}`);
   }
 
   async resolveWorkflowId() {
@@ -65,7 +118,7 @@ export class N8nClient {
   }
 
   static runData(execution) {
-    return execution?.data?.resultData?.runData || execution?.data?.resultData?.runData || {};
+    return execution?.data?.resultData?.runData || {};
   }
 
   static nodeJsons(execution, nodeName) {
@@ -104,22 +157,22 @@ export class N8nClient {
     return false;
   }
 
-  async waitForExecution({ question, sessionId, startedAfterMs, timeoutMs = 90_000 }) {
+  async waitForExecution({ question, sessionId, startedAfterMs, timeoutMs = 120_000 }) {
     const deadline = Date.now() + timeoutMs;
     const checked = new Set();
     while (Date.now() < deadline) {
-      const list = await this.listExecutions(40);
+      const list = await this.listExecutions(50);
       const rows = Array.isArray(list?.data) ? list.data : [];
       for (const row of rows) {
         const id = String(row?.id || '');
         if (!id || checked.has(id)) continue;
         const started = Date.parse(row?.startedAt || row?.createdAt || 0);
-        if (Number.isFinite(started) && started + 15_000 < startedAfterMs) continue;
+        if (Number.isFinite(started) && started + 20_000 < startedAfterMs) continue;
         const execution = await this.getExecution(id);
         checked.add(id);
         if (N8nClient.executionContains(execution, { question, sessionId })) return execution;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await sleep(2000);
     }
     throw new Error(`Não encontrei execução do workflow 42 para a pergunta "${question}" e sessão "${sessionId}" dentro de ${timeoutMs / 1000}s.`);
   }

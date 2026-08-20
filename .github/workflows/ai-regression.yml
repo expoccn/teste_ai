@@ -16,7 +16,7 @@ permissions:
 jobs:
   ai-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     env:
       FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
       FRONTEND_TEST_USER: ${{ secrets.FRONTEND_TEST_USER }}
@@ -26,6 +26,7 @@ jobs:
       N8N_AI_WORKFLOW_ID: ${{ secrets.N8N_AI_WORKFLOW_ID }}
       N8N_AI_WORKFLOW_NAME: ${{ vars.N8N_AI_WORKFLOW_NAME }}
       TEST_GROUP: ${{ github.event.inputs.test_group }}
+      NODE_OPTIONS: --dns-result-order=ipv4first
 
     steps:
       - name: Checkout
@@ -42,10 +43,17 @@ jobs:
       - name: Validate harness source
         run: npm run validate:source && npm run selftest
 
+      - name: Preflight frontend + n8n
+        id: preflight
+        continue-on-error: true
+        run: npm run preflight
+
       - name: Install Chromium
+        if: steps.preflight.outcome == 'success'
         run: npx playwright install --with-deps chromium
 
       - name: Run IA regression
+        if: steps.preflight.outcome == 'success'
         id: tests
         continue-on-error: true
         run: npm run test:ai
@@ -70,6 +78,6 @@ jobs:
             playwright-report/
             test-results/
 
-      - name: Fail job when tests failed
-        if: always() && steps.tests.outcome == 'failure'
+      - name: Fail job when preflight or tests failed
+        if: always() && (steps.preflight.outcome == 'failure' || steps.tests.outcome == 'failure')
         run: exit 1

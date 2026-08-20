@@ -25,6 +25,53 @@ function setPhase(record, phase) {
   record.phase = phase;
 }
 
+
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function navigateWithRetry(page, target, label) {
+  const timeouts = [30_000, 45_000, 60_000, 75_000];
+  const attempts = [];
+  for (let i = 0; i < timeouts.length; i++) {
+    const started = Date.now();
+    try {
+      const response = await page.goto(target, { waitUntil: 'commit', timeout: timeouts[i] });
+      const status = response?.status?.() ?? null;
+      if (status !== null && status >= 500) throw new Error(`HTTP ${status}`);
+      attempts.push({ attempt: i + 1, ok: true, status, elapsed_ms: Date.now() - started, url: page.url() });
+      // O locator da etapa seguinte confirma que a aplicação renderizou. Não
+      // dependemos de domcontentloaded para considerar a navegação iniciada.
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      return { response, attempts };
+    } catch (error) {
+      attempts.push({ attempt: i + 1, ok: false, elapsed_ms: Date.now() - started, error: error instanceof Error ? error.message : String(error), url: page.url() });
+      await page.goto('about:blank', { waitUntil: 'commit', timeout: 10_000 }).catch(() => {});
+      if (i < timeouts.length - 1) await sleep(Math.min(5000 * (i + 1), 15000));
+    }
+  }
+  const compact = attempts.map((x) => `#${x.attempt}:${x.ok ? `HTTP ${x.status ?? '?'}` : x.error}`).join(' | ');
+  throw new Error(`NAVIGATION_FAILED [${label}] após ${attempts.length} tentativas — ${compact}`);
+}
+
+async function reloadWithRetry(page, label) {
+  const timeouts = [30_000, 45_000, 60_000];
+  const attempts = [];
+  for (let i = 0; i < timeouts.length; i++) {
+    const started = Date.now();
+    try {
+      const response = await page.reload({ waitUntil: 'commit', timeout: timeouts[i] });
+      attempts.push({ attempt: i + 1, ok: true, status: response?.status?.() ?? null, elapsed_ms: Date.now() - started });
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      return attempts;
+    } catch (error) {
+      attempts.push({ attempt: i + 1, ok: false, elapsed_ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
+      if (i < timeouts.length - 1) await sleep(Math.min(4000 * (i + 1), 10000));
+    }
+  }
+  throw new Error(`RELOAD_FAILED [${label}] após ${attempts.length} tentativas — ${attempts.map((x) => `#${x.attempt}:${x.ok ? x.status : x.error}`).join(' | ')}`);
+}
 async function attachJson(testInfo, name, value) {
   await testInfo.attach(name, {
     body: Buffer.from(JSON.stringify(value, null, 2)),
@@ -33,7 +80,7 @@ async function attachJson(testInfo, name, value) {
 }
 
 async function login(page) {
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await navigateWithRetry(page, '/login', 'login');
   if (!page.url().includes('/login')) return;
 
   // Seletores ancorados nos IDs reais do frontend v18. Evitam a ambiguidade
@@ -72,7 +119,7 @@ async function login(page) {
 }
 
 async function openAiPage(page) {
-  await page.goto('/analises-ia', { waitUntil: 'domcontentloaded' });
+  await navigateWithRetry(page, '/analises-ia', 'analises-ia');
   await expect(page.getByRole('heading', { name: 'Análises por IA', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'Assistente de análise', exact: true })).toBeVisible({ timeout: 60_000 });
 }
@@ -95,7 +142,7 @@ async function setPeriod(page, period) {
 async function uniqueAiSession(page, caseId) {
   const id = `e2e-${Date.now()}-${caseId.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`.slice(0, 96);
   await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [AI_SESSION_KEY, id]);
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await reloadWithRetry(page, 'session-reload');
 
   await expect(page.getByRole('heading', { name: 'Assistente de análise', exact: true })).toBeVisible({ timeout: 60_000 });
   const textarea = page.getByPlaceholder('Pergunte sobre os dados consolidados...', { exact: true });
